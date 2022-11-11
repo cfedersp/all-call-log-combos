@@ -17,7 +17,16 @@ import java.util.stream.Stream;
 
 /**
  * mvn clean package exec:exec
- * Next version will use RecursiveAction and a ConcurrentLinkedQueue to write directly to a file
+ * Discussion: This impl uses String model and recurses on each order-of-mag digit and writes to a Queue.
+ * Then a single root action writes the Queue to disk. Works find if queue capacity is large.
+ * If the queue capacity is small, many Actions will be blocked.
+ *
+ * Example using numbers: https://www.codejava.net/java-core/concurrency/understanding-java-fork-join-framework-with-examples
+ *
+ * Enhancement Options:
+ * 1) Put Queue writer into its own thread or thread pool.
+ * 2) Get rid of the queue and use the ForkJoin Dequeue, using multiple writer Actions.
+ * It may be possible to use multiple tasks to write if there is an Atomic Lock.
  */
 public class ConcurrentQueueApp
 {
@@ -28,7 +37,13 @@ public class ConcurrentQueueApp
         LocalDateTime dt = LocalDateTime.now();
         app.startCompute(7);
         Duration dur = Duration.between(dt, LocalDateTime.now());
-        System.out.println(String.format("Completed in %d:%02d:%02d", dur.toHoursPart(), dur.toMinutesPart(), dur.toSecondsPart()));
+        if(dur.toMillis() < 20*1000) {
+            System.out.println(String.format("Completed in %d milliseconds", dur.toMillis()));
+        } else if(dur.toMillis() < 120*1000) {
+            System.out.println(String.format("Completed in %d:%02d:%02d, or %d milliseconds", dur.toHoursPart(), dur.toMinutesPart(), dur.toSecondsPart(), dur.toMillis()));
+        } else {
+            System.out.println(String.format("Completed in %d:%02d:%02d", dur.toHoursPart(), dur.toMinutesPart(), dur.toSecondsPart()));
+        }
         // depth of 6 creates almost 6Mb
         // 7 creates 9 999 999 ~10M ~70Mb
         // 8 creates 100M=800Mb
@@ -47,7 +62,9 @@ public class ConcurrentQueueApp
     protected void startCompute(int depth) throws IOException {
         String fileName = "/tmp/concurrent-combos-" + depth + ".txt";
         // ConcurrentLinkedQueue<String> lq = new ConcurrentLinkedQueue<>();
-        LinkedBlockingQueue<QueueItem<String>> lq = new LinkedBlockingQueue(1000000);
+        // we're creating 10^(depth-1) workers and a single writer. Queue length should be at least 10^(depth-2)
+        // Otherwise we'll have hundreds of blocked workers.
+        LinkedBlockingQueue<QueueItem<String>> lq = new LinkedBlockingQueue(100000);
         RecursiveAction notifierAction = new QueueNotifierAction(lq, new PhoneDepthLevelTask(depth, lq));
         RecursiveAction writerTask = new WriteBlockingQueueToFileOutputTask(fileName, lq);
         RecursiveAction dagRoot = new DagRoot(writerTask, notifierAction);
