@@ -1,17 +1,14 @@
 package com.ectech;
 
-import java.io.BufferedWriter;
-import java.io.FileWriter;
 import java.io.IOException;
-import java.math.BigInteger;
 import java.nio.file.Files;
-import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.time.Duration;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.ForkJoinTask;
-import java.util.concurrent.RecursiveAction;
 import java.util.concurrent.RecursiveTask;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -20,12 +17,15 @@ import java.util.stream.Stream;
  * mvn clean package exec:exec
  * Next version will use RecursiveAction and a ConcurrentLinkedQueue to write directly to a file
  */
-public class App 
+public class InMemoryApp
 {
     ForkJoinPool commonPool = ForkJoinPool.commonPool();
     public static void main( String[] args ) throws IOException {
-        App app = new App();
+        InMemoryApp app = new InMemoryApp();
+        LocalDateTime dt = LocalDateTime.now();
         app.startCompute(7);
+        Duration dur = Duration.between(dt, LocalDateTime.now());
+        System.out.println(String.format("Completed in %d:%02d:%02d", dur.toHoursPart(), dur.toMinutesPart(), dur.toSecondsPart()));
         // depth of 6 creates almost 6Mb
         // 7 creates 9 999 999 ~10M ~70Mb
         // 8 creates 100M=800Mb
@@ -41,8 +41,9 @@ public class App
         PhoneDepthLevelTask rt = new PhoneDepthLevelTask(depth);
         List<String> generatedCombos = commonPool.invoke(rt);
         List<String> filteredCombos = generatedCombos.stream()
-            .filter(s -> s.length() == depth)
-            .filter(s -> !s.startsWith("0")).collect(Collectors.toList());
+            //.filter(s -> s.length() == depth)
+            //.filter(s -> !s.startsWith("0"))
+            .collect(Collectors.toList());
         String fileName = "/tmp/combos-" + depth + ".txt";
         Files.write(Paths.get(fileName), filteredCombos);
         /*
@@ -74,12 +75,9 @@ public class App
         }
 
         protected List<PhoneDepthLevelTask> generateNextLevel(String currPhoneValue) {
-            List<PhoneDepthLevelTask> phoneBuilders = new ArrayList<>();
+            return Stream.iterate(0, n -> n + 1)
+                .limit(10).map(i -> new PhoneDepthLevelTask(currPhoneValue, i, requiredDepth, this.currentLevel+1)).collect(Collectors.toList());
 
-            for (int i = 0; i < 10; i++) {
-                phoneBuilders.add(new PhoneDepthLevelTask(currPhoneValue, i, requiredDepth, this.currentLevel+1));
-            }
-            return phoneBuilders;
         }
         @Override
         protected List<String> compute() {
