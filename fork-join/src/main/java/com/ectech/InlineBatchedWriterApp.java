@@ -106,7 +106,8 @@ public class InlineBatchedWriterApp
             String currValue = this.parentData == null ? "" : this.parentData + String.valueOf(this.nextDigit);
             if (this.currentLevel < this.requiredDepth) {
                 List<CharRecursionTask> nextLevel = generateNextLevel(currValue).collect(Collectors.toList());
-                Collection<String> generatedPhones = ForkJoinTask.invokeAll(nextLevel).stream().map(CharRecursionTask::join).flatMap(o -> Stream.of((String)o)).collect(Collectors.toList());
+                Collection<String> generatedPhones = ForkJoinTask.invokeAll(nextLevel).stream().map(CharRecursionTask::join).map(o -> (String)o).collect(Collectors.toList());
+                //Collection<String> generatedPhones = ForkJoinTask.invokeAll(nextLevel).stream().map(CharRecursionTask::join).flatMap(o -> Stream.of((String)o)).collect(Collectors.toList());
                 if(this.currentLevel == this.requiredDepth -1) {
                     try {
                         for(String currPhone : generatedPhones) {

@@ -64,7 +64,11 @@ public class ConcurrentQueueApp
         // ConcurrentLinkedQueue<String> lq = new ConcurrentLinkedQueue<>();
         // we're creating 10^(depth-1) workers and a single writer. Queue length should be at least 10^(depth-2)
         // Otherwise we'll have hundreds of blocked workers.
-        LinkedBlockingQueue<QueueItem<String>> lq = new LinkedBlockingQueue(100000);
+        LinkedBlockingQueue<QueueItem<String>> lq = new LinkedBlockingQueue(100);
+        // Results:
+        // works with add|put, depth: 7, cap: 1000000
+        // freezes with add, depth: 7, cap: 100000
+        // works with put, depth: 7, cap: 100000 | 10000 | 10000 | 1000 | 100
         RecursiveAction notifierAction = new QueueNotifierAction(lq, new PhoneDepthLevelTask(depth, lq));
         RecursiveAction writerTask = new WriteBlockingQueueToFileOutputTask(fileName, lq);
         RecursiveAction dagRoot = new DagRoot(writerTask, notifierAction);
@@ -134,8 +138,8 @@ public class ConcurrentQueueApp
     }
     class QueueNotifierAction extends RecursiveAction {
         private RecursiveAction rootWorker;
-        private Queue q;
-        public QueueNotifierAction(Queue q, RecursiveAction rootWorker) {
+        private BlockingQueue q;
+        public QueueNotifierAction(BlockingQueue q, RecursiveAction rootWorker) {
             this.q = q;
             this.rootWorker = rootWorker;
         }
@@ -144,7 +148,11 @@ public class ConcurrentQueueApp
         protected void compute() {
             ForkJoinTask.invokeAll(rootWorker);
             System.out.println("finished workers. sending null to queue");
-            q.add(new QueueItem<String>(null, true));
+            try {
+                q.put(new QueueItem<String>(null, true));
+            } catch (InterruptedException e) {
+                throw new RuntimeException(e);
+            }
         }
     }
     class WriteBlockingQueueToFileOutputTask extends RecursiveAction {
@@ -189,17 +197,17 @@ public class ConcurrentQueueApp
      * To separate DAG generation from compute, state must be encapsulated.
      */
     class PhoneDepthLevelTask extends RecursiveAction {
-        protected Queue<QueueItem<String>> lq;
+        protected BlockingQueue<QueueItem<String>> lq;
         protected String parentPhone;
         protected int nextDigit;
         protected int requiredDepth;
         protected int currentLevel;
-        public PhoneDepthLevelTask(int requiredDepth, Queue<QueueItem<String>> lq) {
+        public PhoneDepthLevelTask(int requiredDepth, BlockingQueue<QueueItem<String>> lq) {
             this.requiredDepth = requiredDepth;
             this.currentLevel = 0;
             this.lq = lq;
         }
-        public PhoneDepthLevelTask(String phone, int newDigit, int requiredDepth, int currentLevel, Queue<QueueItem<String>> lq) {
+        public PhoneDepthLevelTask(String phone, int newDigit, int requiredDepth, int currentLevel, BlockingQueue<QueueItem<String>> lq) {
             this.parentPhone = phone;
             this.nextDigit = newDigit;
             this.requiredDepth = requiredDepth;
@@ -220,7 +228,11 @@ public class ConcurrentQueueApp
                 ForkJoinTask.invokeAll(nextLevel); // Dont try to interact with child Actions after this line or deadlock will occur.
 
             } else {
-                lq.add(new QueueItem<String>(currValue, false));
+                try {
+                    lq.put(new QueueItem<String>(currValue, false));
+                } catch (InterruptedException e) {
+                    throw new RuntimeException(e);
+                }
             }
         }
     }
